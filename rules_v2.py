@@ -12,23 +12,67 @@ Rule 4 -> 10 (or trim the losers more aggressively).
 """
 
 import rules
+import cv2
+import numpy as np
 
-#: Import the original rules and append your new one.
-RULES = rules.RULES + ("rule4_edges",)
+#: Define our custom rule set with rescaled weights summing to 100
+RULES = ("rule1_v2", "rule2_v2", "rule3_v2", "rule4_edges")
+
+
+def _scale(res, new_out_of):
+    """Helper to rescale rule score to new weight."""
+    if res["out_of"] > 0:
+        res["score"] = int(round(res["score"] * (new_out_of / res["out_of"])))
+    res["out_of"] = new_out_of
+    return res
+
+
+def rule1_v2(target, input_path):
+    return _scale(rules.rule1(target, input_path), 25)
+
+
+def rule2_v2(target, input_path):
+    return _scale(rules.rule2(target, input_path), 25)
+
+
+def rule3_v2(target, input_path):
+    return _scale(rules.rule3(target, input_path), 40)
 
 
 def rule4_edges(target, input_path):
-    """TODO: replace with your Phase 2 rule that fixes the V1 weakness.
+    """Rule 4: Edge-based comparison (out_of = 10)."""
+    try:
+        img1 = cv2.imread(target, cv2.IMREAD_GRAYSCALE)
+        img2 = cv2.imread(input_path, cv2.IMREAD_GRAYSCALE)
+        
+        if img1 is None or img2 is None:
+            return {
+                "rule": 4, "name": "Edges", "fired": False,
+                "score": 0, "out_of": 10, "note": "Image error", "metric": 0.0
+            }
+            
+        img2_resized = cv2.resize(img2, (img1.shape[1], img1.shape[0]))
 
-    Starter returns a no-op so the pipeline still runs before you implement it.
-    Parity with rules.py rule dict: rule/name/fired/score/out_of/note/metric.
-    """
-    return {
-        "rule": 4,
-        "name": "Edges",
-        "fired": False,
-        "score": 0,
-        "out_of": 10,
-        "note": "Not implemented",
-        "metric": 0.0,
-    }
+        edges1 = cv2.Canny(img1, 100, 200)
+        edges2 = cv2.Canny(img2_resized, 100, 200)
+
+        diff = np.absdiff(edges1, edges2)
+        metric = float(np.mean(diff))
+
+        fired = metric < 25.0
+        score = 10 if fired else 0
+
+        return {
+            "rule": 4,
+            "name": "Edges",
+            "fired": fired,
+            "score": score,
+            "out_of": 10,
+            "note": f"Edge diff: {metric:.2f}",
+            "metric": metric,
+        }
+    except Exception as e:
+        return {
+            "rule": 4, "name": "Edges", "fired": False,
+            "score": 0, "out_of": 10, "note": str(e), "metric": 0.0
+        }
